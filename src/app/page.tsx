@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { Sparkles, Loader2 } from "lucide-react";
 import SourceUploader from "@/components/SourceUploader";
 import NotebookLMButton from "@/components/NotebookLMButton";
+import TextSourceInput from "@/components/TextSourceInput";
 import SettingsPanel from "@/components/SettingsPanel";
 import ThemeSelector from "@/components/ThemeSelector";
 import RenderCanvas from "@/components/RenderCanvas";
@@ -16,6 +17,7 @@ import type { UploadedFile, SessionSettings, SessionStatus, Session, SlideData }
 export default function Home() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [notebookUrl, setNotebookUrl] = useState<string | null>(null);
+  const [textSource, setTextSource] = useState("");
   const [themeId, setThemeId] = useState(DEFAULT_THEME.id);
   const [settings, setSettings] = useState<SessionSettings>({
     slideCount: 5,
@@ -63,7 +65,7 @@ export default function Home() {
     [stopPolling]
   );
 
-  const hasSources = files.length > 0 || !!notebookUrl;
+  const hasSources = files.length > 0 || !!notebookUrl || textSource.trim().length > 0;
 
   const handleGenerate = async () => {
     if (!hasSources) return;
@@ -73,13 +75,14 @@ export default function Home() {
     setBuildStatus("uploading");
 
     try {
-      // 1. Create session
+      // 1. Create session with text_source
       const { data: session, error: sessionError } = await supabase
         .from("sessions")
         .insert({
           status: "uploading",
           settings,
           notebook_url: notebookUrl,
+          text_source: textSource.trim() || null,
           theme: themeId,
         })
         .select("id")
@@ -165,6 +168,13 @@ export default function Home() {
               disabled={isBusy}
             />
           </div>
+
+          {/* Text Source Input */}
+          <TextSourceInput
+            value={textSource}
+            onChange={setTextSource}
+            disabled={isBusy}
+          />
 
           {/* Settings Section */}
           <SettingsPanel

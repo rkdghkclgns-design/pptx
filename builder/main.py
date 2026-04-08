@@ -41,23 +41,31 @@ def main() -> None:
         update_session_status(session_id, "building", supabase_url, supabase_key)
         print(f"Session {session_id}: status -> building")
 
-        # 2. Fetch session to get notebook_url
+        # 2. Fetch session to get notebook_url and text_source
         session = get_session(session_id, supabase_url, supabase_key)
         notebook_url = session.get("notebook_url")
+        text_source = session.get("text_source") or ""
         print(f"Notebook URL: {notebook_url or 'none'}")
+        print(f"Text source: {len(text_source)} characters")
 
-        # 3. Download source files (may be empty if only NotebookLM)
+        # 3. Download source files (may be empty if only text/NotebookLM)
         tmp_dir = download_source_files(session_id, supabase_url, supabase_key)
 
-        # 4. Parse all source files
+        # 4. Collect all content sources
         content_parts: list[str] = []
 
+        # Priority 1: Direct text input (most reliable — user-pasted content)
+        if text_source.strip():
+            content_parts.append(f"=== 사용자 입력 텍스트 ===\n{text_source}")
+            print(f"Using text source: {len(text_source)} characters")
+
+        # Priority 2: Uploaded files
         file_content = parse_all_files(tmp_dir)
         if file_content.strip():
             content_parts.append(file_content)
             print(f"Parsed file content: {len(file_content)} characters")
 
-        # 5. Fetch NotebookLM content if URL provided
+        # Priority 3: NotebookLM URL (fallback — may not have real content)
         has_notebook = False
         if notebook_url and notebook_url.startswith("http"):
             nb_content = fetch_notebook_content(notebook_url)
@@ -65,13 +73,12 @@ def main() -> None:
                 content_parts.append(f"=== NotebookLM Source ===\n{nb_content}")
                 print(f"Fetched NotebookLM content: {len(nb_content)} characters")
             else:
-                # JS-rendered page — Gemini will use Google Search grounding
                 has_notebook = True
-                print(f"NotebookLM is JS-rendered, Gemini will use Search grounding")
+                print(f"NotebookLM is JS-rendered, will use Search grounding")
 
         content = "\n\n".join(content_parts)
         if not content.strip() and not has_notebook:
-            raise RuntimeError("소스 데이터에서 텍스트를 추출할 수 없습니다. 파일을 업로드하거나 NotebookLM URL을 확인하세요.")
+            raise RuntimeError("소스 데이터가 없습니다. 텍스트를 직접 입력하거나 파일을 업로드하세요.")
         if not content.strip() and has_notebook:
             content = f"Please create a presentation based on the content at this URL: {notebook_url}"
         print(f"Total content: {len(content)} characters")
