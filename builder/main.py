@@ -58,21 +58,31 @@ def main() -> None:
             print(f"Parsed file content: {len(file_content)} characters")
 
         # 5. Fetch NotebookLM content if URL provided
+        has_notebook = False
         if notebook_url and notebook_url.startswith("http"):
             nb_content = fetch_notebook_content(notebook_url)
             if nb_content.strip():
                 content_parts.append(f"=== NotebookLM Source ===\n{nb_content}")
                 print(f"Fetched NotebookLM content: {len(nb_content)} characters")
+            else:
+                # JS-rendered page — Gemini will use Google Search grounding
+                has_notebook = True
+                print(f"NotebookLM is JS-rendered, Gemini will use Search grounding")
 
         content = "\n\n".join(content_parts)
-        if not content.strip():
+        if not content.strip() and not has_notebook:
             raise RuntimeError("소스 데이터에서 텍스트를 추출할 수 없습니다. 파일을 업로드하거나 NotebookLM URL을 확인하세요.")
+        if not content.strip() and has_notebook:
+            content = f"Please create a presentation based on the content at this URL: {notebook_url}"
         print(f"Total content: {len(content)} characters")
 
         # 6. Generate slides via Gemini
         update_session_status(session_id, "generating", supabase_url, supabase_key)
         print("Calling Gemini API for slide generation...")
-        presentation = generate_slides(content, slide_count, supabase_url, supabase_key)
+        presentation = generate_slides(
+            content, slide_count, supabase_url, supabase_key,
+            notebook_url=notebook_url,
+        )
         print(f"Generated {len(presentation.slides)} slides")
 
         # 7. Generate images for slides

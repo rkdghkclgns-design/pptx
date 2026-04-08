@@ -47,6 +47,7 @@ def generate_slides(
     supabase_url: str,
     supabase_key: str,
     max_retries: int = 3,
+    notebook_url: str | None = None,
 ) -> PresentationData:
     """Call Gemini API directly and return structured slide data."""
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -63,13 +64,19 @@ def generate_slides(
         content = content[:max_content_chars] + "\n\n[... 이하 생략됨]"
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
-    payload = {
+
+    # Build the prompt text
+    prompt_text = f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
+
+    # If we have a notebook URL, add it for Gemini to reference via grounding
+    if notebook_url and notebook_url.startswith("http"):
+        prompt_text += f"\n\n--- ADDITIONAL REFERENCE URL ---\nPlease also analyze the content at this URL for the presentation: {notebook_url}"
+
+    payload: dict = {
         "contents": [
             {
                 "parts": [
-                    {
-                        "text": f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
-                    }
+                    {"text": prompt_text}
                 ]
             }
         ],
@@ -78,6 +85,13 @@ def generate_slides(
             "maxOutputTokens": 8192,
         },
     }
+
+    # Enable Google Search grounding when we have a URL
+    # This lets Gemini actually fetch and read the URL content
+    if notebook_url and notebook_url.startswith("http"):
+        payload["tools"] = [
+            {"googleSearch": {}}
+        ]
 
     last_error: Optional[str] = None
     for attempt in range(max_retries):
@@ -94,6 +108,16 @@ def generate_slides(
                 print(f"Gemini API retry {attempt + 1}/{max_retries} (HTTP {resp.status_code}), waiting {wait}s...")
                 time.sleep(wait)
                 last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
+                continue
+
+            if resp.status_code == 400:
+                # If grounding fails, retry without it
+                if "tools" in payload:
+                    print("Google Search grounding failed, retrying without it...")
+                    del payload["tools"]
+                    continue
+                last_error = f"HTTP 400: {resp.text[:300]}"
+                time.sleep(1)
                 continue
 
             resp.raise_for_status()
@@ -118,8 +142,10 @@ def _extract_slides_json(gemini_response: dict) -> dict:
     candidates = gemini_response.get("candidates", [])
     if candidates:
         parts = candidates[0].get("content", {}).get("parts", [])
-        if parts:
-            text = parts[0].get("text", "")
+        for part in parts:
+            text = part.get("text", "")
+            if not text:
+                continue
             text = text.strip()
             if text.startswith("```json"):
                 text = text[7:]
@@ -127,7 +153,12 @@ def _extract_slides_json(gemini_response: dict) -> dict:
                 text = text[3:]
             if text.endswith("```"):
                 text = text[:-3]
-            return json.loads(text.strip())
+            text = text.strip()
+            if text.startswith("{"):
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    continue
 
     raise ValueError(
         f"Gemini 응답에서 슬라이드 데이터를 추출할 수 없습니다: {json.dumps(gemini_response)[:500]}"
