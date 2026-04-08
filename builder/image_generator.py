@@ -1,4 +1,4 @@
-"""Generate real images for slides using Gemini 2.5 Flash native image generation."""
+"""Generate real images for slides using Imagen 3 API."""
 
 import base64
 import os
@@ -29,53 +29,103 @@ def generate_slide_images(
             continue
 
         print(f"  Generating image for slide {i + 1}: {slide.imagePrompt[:60]}...")
-        image_data_uri = _generate_image_gemini(slide.imagePrompt, gemini_api_key)
+        image_data_uri = _generate_image(slide.imagePrompt, gemini_api_key)
 
         if image_data_uri:
-            # Upload to Supabase Storage for persistent URL
-            public_url = _upload_to_storage(
-                image_data_uri, f"slide-{i}", supabase_url, supabase_key
-            )
-            updated.append(slide.model_copy(update={"imageUrl": public_url or image_data_uri}))
+            updated.append(slide.model_copy(update={"imageUrl": image_data_uri}))
             print(f"  ✓ Image generated for slide {i + 1}")
         else:
             updated.append(slide)
             print(f"  ✗ Image generation failed for slide {i + 1}")
 
-        # Rate limit: 10 RPM for free tier
-        time.sleep(7)
+        # Rate limit protection
+        time.sleep(5)
 
     return updated
 
 
-def _generate_image_gemini(prompt: str, api_key: str) -> Optional[str]:
-    """Generate image using Gemini 2.5 Flash native image generation.
+def _generate_image(prompt: str, api_key: str) -> Optional[str]:
+    """Generate image using Imagen 3 via Gemini API.
 
     Returns a data:image/png;base64,... URI or None on failure.
     """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+    # Try Imagen 3 first
+    result = _try_imagen3(prompt, api_key)
+    if result:
+        return result
 
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {
-                        "text": (
-                            f"Generate a professional, clean illustration image for a presentation slide. "
-                            f"The image should visually represent: {prompt}. "
-                            f"Style: modern flat design, minimal, corporate, 16:9 aspect ratio. "
-                            f"No text in the image."
-                        )
-                    }
-                ]
-            }
-        ],
-        "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
-        },
-    }
+    # Fallback: Gemini Flash with image output
+    result = _try_gemini_flash_image(prompt, api_key)
+    if result:
+        return result
 
+    return None
+
+
+def _try_imagen3(prompt: str, api_key: str) -> Optional[str]:
+    """Try Imagen 3 model for image generation."""
     try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={api_key}"
+        payload = {
+            "instances": [
+                {
+                    "prompt": (
+                        f"Professional presentation slide illustration: {prompt}. "
+                        f"Clean modern flat design, minimal style, no text, 16:9 aspect ratio."
+                    )
+                }
+            ],
+            "parameters": {
+                "sampleCount": 1,
+                "aspectRatio": "16:9",
+            },
+        }
+
+        resp = requests.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30,
+        )
+
+        if resp.status_code == 200:
+            data = resp.json()
+            predictions = data.get("predictions", [])
+            if predictions:
+                b64 = predictions[0].get("bytesBase64Encoded", "")
+                if b64:
+                    return f"data:image/png;base64,{b64}"
+
+        print(f"    Imagen 3 returned {resp.status_code}: {resp.text[:100]}")
+        return None
+
+    except Exception as e:
+        print(f"    Imagen 3 failed: {e}")
+        return None
+
+
+def _try_gemini_flash_image(prompt: str, api_key: str) -> Optional[str]:
+    """Try Gemini 2.0 Flash with image generation capability."""
+    try:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {
+                            "text": (
+                                f"Generate an image: Professional presentation slide illustration about {prompt}. "
+                                f"Clean modern flat design, minimal style, no text."
+                            )
+                        }
+                    ]
+                }
+            ],
+            "generationConfig": {
+                "responseModalities": ["TEXT", "IMAGE"],
+            },
+        }
+
         resp = requests.post(
             url,
             json=payload,
@@ -84,7 +134,7 @@ def _generate_image_gemini(prompt: str, api_key: str) -> Optional[str]:
         )
 
         if resp.status_code != 200:
-            print(f"    Gemini image API error: {resp.status_code} - {resp.text[:150]}")
+            print(f"    Gemini Flash image returned {resp.status_code}: {resp.text[:100]}")
             return None
 
         data = resp.json()
@@ -95,50 +145,15 @@ def _generate_image_gemini(prompt: str, api_key: str) -> Optional[str]:
         parts = candidates[0].get("content", {}).get("parts", [])
         for part in parts:
             inline_data = part.get("inlineData", {})
-            if inline_data.get("mimeType", "").startswith("image/"):
-                b64 = inline_data["data"]
-                mime = inline_data["mimeType"]
-                return f"data:{mime};base64,{b64}"
+            mime = inline_data.get("mimeType", "")
+            if mime.startswith("image/"):
+                b64 = inline_data.get("data", "")
+                if b64:
+                    return f"data:{mime};base64,{b64}"
 
+        print(f"    Gemini Flash returned no image in response")
         return None
 
     except Exception as e:
-        print(f"    Image generation exception: {e}")
-        return None
-
-
-def _upload_to_storage(
-    data_uri: str,
-    filename: str,
-    supabase_url: str,
-    supabase_key: str,
-) -> Optional[str]:
-    """Upload a data URI image to Supabase Storage and return public URL."""
-    try:
-        # Parse data URI
-        header, b64data = data_uri.split(",", 1)
-        mime = header.split(":")[1].split(";")[0]
-        ext = "png" if "png" in mime else "jpeg"
-        image_bytes = base64.b64decode(b64data)
-
-        path = f"generated/{filename}.{ext}"
-        upload_url = f"{supabase_url}/storage/v1/object/source-files/{path}"
-
-        resp = requests.post(
-            upload_url,
-            data=image_bytes,
-            headers={
-                "Authorization": f"Bearer {supabase_key}",
-                "Content-Type": mime,
-            },
-            timeout=30,
-        )
-
-        if resp.status_code in (200, 201):
-            return f"{supabase_url}/storage/v1/object/public/source-files/{path}"
-
-        return None
-
-    except Exception as e:
-        print(f"    Upload failed: {e}")
+        print(f"    Gemini Flash image failed: {e}")
         return None
