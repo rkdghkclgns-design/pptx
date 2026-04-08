@@ -46,7 +46,7 @@ def generate_slides(
     slide_count: int,
     supabase_url: str,
     supabase_key: str,
-    max_retries: int = 3,
+    max_retries: int = 5,
     notebook_url: str | None = None,
 ) -> PresentationData:
     """Call Gemini API directly and return structured slide data."""
@@ -68,9 +68,15 @@ def generate_slides(
     # Build the prompt text
     prompt_text = f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
 
-    # If we have a notebook URL, add it for Gemini to reference via grounding
+    # If we have a notebook URL, instruct Gemini to read it directly
     if notebook_url and notebook_url.startswith("http"):
-        prompt_text += f"\n\n--- ADDITIONAL REFERENCE URL ---\nPlease also analyze the content at this URL for the presentation: {notebook_url}"
+        prompt_text += (
+            f"\n\n--- IMPORTANT: READ THIS URL ---\n"
+            f"You MUST read and analyze the full content at this URL: {notebook_url}\n"
+            f"Base ALL slides on the actual content found at this URL.\n"
+            f"Do NOT make up content. Do NOT describe NotebookLM itself.\n"
+            f"Read the URL first, then create slides from what you find there."
+        )
 
     payload: dict = {
         "contents": [
@@ -86,11 +92,11 @@ def generate_slides(
         },
     }
 
-    # Enable Google Search grounding when we have a URL
-    # This lets Gemini actually fetch and read the URL content
+    # Use urlContext to let Gemini directly fetch and read the URL content
+    # This works for JS-rendered pages like NotebookLM
     if notebook_url and notebook_url.startswith("http"):
         payload["tools"] = [
-            {"googleSearch": {}}
+            {"urlContext": {}}
         ]
 
     last_error: Optional[str] = None
@@ -111,14 +117,23 @@ def generate_slides(
                 continue
 
             if resp.status_code == 400:
-                # If grounding fails, retry without it
-                if "tools" in payload:
-                    print("Google Search grounding failed, retrying without it...")
+                # Fallback chain: urlContext → googleSearch → no tools
+                current_tools = payload.get("tools", [])
+                tool_name = current_tools[0] if current_tools else None
+                tool_key = list(tool_name.keys())[0] if isinstance(tool_name, dict) else None
+
+                if tool_key == "urlContext":
+                    print("urlContext failed, falling back to googleSearch...")
+                    payload["tools"] = [{"googleSearch": {}}]
+                    continue
+                elif tool_key == "googleSearch":
+                    print("googleSearch failed, retrying without tools...")
                     del payload["tools"]
                     continue
-                last_error = f"HTTP 400: {resp.text[:300]}"
-                time.sleep(1)
-                continue
+                else:
+                    last_error = f"HTTP 400: {resp.text[:300]}"
+                    time.sleep(1)
+                    continue
 
             resp.raise_for_status()
             data = resp.json()
