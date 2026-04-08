@@ -6,11 +6,12 @@ import sys
 
 from file_parser import parse_all_files
 from gemini_client import generate_slides
+from notebook_fetcher import fetch_notebook_content
 from slide_builder import build_pptx
-from supabase_client import download_source_files, update_session_status
+from supabase_client import download_source_files, get_session, update_session_status
 
 
-def main():
+def main() -> None:
     session_id = os.environ.get("SESSION_ID")
     settings_json = os.environ.get("SETTINGS", "{}")
     supabase_url = os.environ.get("SUPABASE_URL")
@@ -32,29 +33,47 @@ def main():
         update_session_status(session_id, "building", supabase_url, supabase_key)
         print(f"Session {session_id}: status -> building")
 
-        # 2. Download source files
+        # 2. Fetch session to get notebook_url
+        session = get_session(session_id, supabase_url, supabase_key)
+        notebook_url = session.get("notebook_url")
+        print(f"Notebook URL: {notebook_url or 'none'}")
+
+        # 3. Download source files (may be empty if only NotebookLM)
         tmp_dir = download_source_files(session_id, supabase_url, supabase_key)
-        print(f"Downloaded source files to {tmp_dir}")
 
-        # 3. Parse all source files
-        content = parse_all_files(tmp_dir)
+        # 4. Parse all source files
+        content_parts: list[str] = []
+
+        file_content = parse_all_files(tmp_dir)
+        if file_content.strip():
+            content_parts.append(file_content)
+            print(f"Parsed file content: {len(file_content)} characters")
+
+        # 5. Fetch NotebookLM content if URL provided
+        if notebook_url and notebook_url.startswith("http"):
+            nb_content = fetch_notebook_content(notebook_url)
+            if nb_content.strip():
+                content_parts.append(f"=== NotebookLM Source ===\n{nb_content}")
+                print(f"Fetched NotebookLM content: {len(nb_content)} characters")
+
+        content = "\n\n".join(content_parts)
         if not content.strip():
-            raise RuntimeError("소스 파일에서 텍스트를 추출할 수 없습니다.")
-        print(f"Parsed content: {len(content)} characters")
+            raise RuntimeError("소스 데이터에서 텍스트를 추출할 수 없습니다. 파일을 업로드하거나 NotebookLM URL을 확인하세요.")
+        print(f"Total content: {len(content)} characters")
 
-        # 4. Generate slides via Gemini
+        # 6. Generate slides via Gemini
         update_session_status(session_id, "generating", supabase_url, supabase_key)
         print("Calling Gemini API for slide generation...")
         presentation = generate_slides(content, slide_count, supabase_url, supabase_key)
         print(f"Generated {len(presentation.slides)} slides")
 
-        # 5. Build PPTX
-        os.makedirs("builder/output", exist_ok=True)
-        output_path = "builder/output/presentation.pptx"
+        # 7. Build PPTX
+        os.makedirs("output", exist_ok=True)
+        output_path = "output/presentation.pptx"
         build_pptx(presentation.slides, output_path)
         print(f"PPTX saved to {output_path}")
 
-        # 6. Update status to complete
+        # 8. Update status to complete
         update_session_status(session_id, "complete", supabase_url, supabase_key)
         print("Build complete!")
 

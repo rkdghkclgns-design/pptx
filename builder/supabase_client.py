@@ -2,8 +2,28 @@
 
 import os
 from pathlib import Path
+from typing import Any
 
 import requests
+
+
+def get_session(
+    session_id: str,
+    supabase_url: str,
+    supabase_key: str,
+) -> dict[str, Any]:
+    """Fetch session record from Supabase database."""
+    url = f"{supabase_url}/rest/v1/sessions?id=eq.{session_id}&select=*"
+    headers = {
+        "Authorization": f"Bearer {supabase_key}",
+        "apikey": supabase_key,
+    }
+    resp = requests.get(url, headers=headers, timeout=15)
+    resp.raise_for_status()
+    rows = resp.json()
+    if not rows:
+        raise RuntimeError(f"세션 {session_id}을(를) 찾을 수 없습니다.")
+    return rows[0]
 
 
 def download_source_files(
@@ -12,7 +32,9 @@ def download_source_files(
     supabase_key: str,
     output_dir: str = "./tmp",
 ) -> str:
-    """Download all source files for a session from Supabase Storage."""
+    """Download all source files for a session from Supabase Storage.
+    Returns the output directory. If no files exist, returns the empty directory.
+    """
     os.makedirs(output_dir, exist_ok=True)
 
     # List objects in the session folder
@@ -32,7 +54,8 @@ def download_source_files(
     objects = resp.json()
 
     if not objects:
-        raise RuntimeError(f"세션 {session_id}에 파일이 없습니다.")
+        print(f"세션 {session_id}에 업로드된 파일이 없습니다. (NotebookLM만 사용 가능)")
+        return output_dir
 
     # Download each file
     for obj in objects:
@@ -68,7 +91,7 @@ def update_session_status(
         "Prefer": "return=minimal",
     }
 
-    body: dict = {"status": status}
+    body: dict[str, Any] = {"status": status}
     if error_message is not None:
         body["error_message"] = error_message
     if github_run_id is not None:
