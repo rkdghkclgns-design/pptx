@@ -43,6 +43,7 @@ export interface Session {
   github_run_id: number | null;
   artifact_url: string | null;
   error_message: string | null;
+  slide_data: SlideData[] | null;
   updated_at: string;
 }
 

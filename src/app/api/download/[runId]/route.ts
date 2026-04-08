@@ -43,11 +43,10 @@ export async function GET(
     );
   }
 
-  // 2. Get download URL for the first (PPTX) artifact
+  // 2. Download the ZIP artifact (GitHub wraps artifacts in ZIP)
   const artifact = artifacts[0];
   const downloadUrl = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/actions/artifacts/${artifact.id}/zip`;
 
-  // 3. Proxy the download (GitHub requires auth)
   const downloadRes = await fetch(downloadUrl, {
     headers: {
       Authorization: `Bearer ${GITHUB_TOKEN}`,
@@ -63,12 +62,13 @@ export async function GET(
     );
   }
 
-  const blob = await downloadRes.blob();
+  const arrayBuffer = await downloadRes.arrayBuffer();
 
-  return new NextResponse(blob, {
+  return new NextResponse(arrayBuffer, {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="presentation-${runId}.zip"`,
+      "Content-Length": String(arrayBuffer.byteLength),
     },
   });
 }

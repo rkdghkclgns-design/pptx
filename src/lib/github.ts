@@ -29,10 +29,3 @@ export async function getSessionStatus(sessionId: string) {
   if (!res.ok) return null;
   return res.json();
 }
-
-export async function getDownloadUrl(runId: number): Promise<string | null> {
-  const res = await fetch(`/api/download/${runId}`);
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data.downloadUrl ?? null;
-}

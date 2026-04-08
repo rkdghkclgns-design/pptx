@@ -3,18 +3,23 @@
 import { Layers } from "lucide-react";
 import StatusTracker from "./StatusTracker";
 import DownloadButton from "./DownloadButton";
-import type { SessionStatus } from "@/lib/types";
+import SlidePreview from "./SlidePreview";
+import type { SessionStatus, SlideData } from "@/lib/types";
 
 interface RenderCanvasProps {
   status: SessionStatus | "idle";
   errorMessage?: string | null;
   runId: number | null;
+  slideData?: SlideData[] | null;
+  themeId: string;
 }
 
 export default function RenderCanvas({
   status,
   errorMessage,
   runId,
+  slideData,
+  themeId,
 }: RenderCanvasProps) {
   if (status === "idle") {
     return (
@@ -32,19 +37,22 @@ export default function RenderCanvas({
 
   if (status === "complete") {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
-        <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 p-6">
-          <Layers className="h-12 w-12 text-emerald-400" />
+      <div className="flex h-full flex-col overflow-y-auto">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-zinc-200">
+            &#x2705; 생성 완료! ({slideData?.length ?? 0}장)
+          </h2>
+          <div className="w-48">
+            <DownloadButton runId={runId} />
+          </div>
         </div>
-        <div>
-          <h2 className="text-xl font-bold text-zinc-200">생성 완료!</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            프레젠테이션이 성공적으로 생성되었습니다.
-          </p>
-        </div>
-        <div className="w-64">
-          <DownloadButton runId={runId} />
-        </div>
+        {slideData && slideData.length > 0 ? (
+          <SlidePreview slides={slideData} themeId={themeId} />
+        ) : (
+          <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
+            미리보기를 사용할 수 없습니다. PPTX를 다운로드하세요.
+          </div>
+        )}
       </div>
     );
   }

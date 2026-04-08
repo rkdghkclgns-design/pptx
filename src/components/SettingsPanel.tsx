@@ -1,6 +1,5 @@
 "use client";
 
-import { AI_ENGINE } from "@/lib/constants";
 import type { SessionSettings } from "@/lib/types";
 
 interface SettingsPanelProps {
@@ -51,16 +50,6 @@ export default function SettingsPanel({
         <p className="text-xs text-cyan-400">
           * 1분에 1장의 슬라이드가 생성됩니다. (정확히 매칭됨)
         </p>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-zinc-300">AI 엔진</label>
-        <div className="flex items-center rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3">
-          <span className="text-sm text-zinc-200">{AI_ENGINE.label}</span>
-          <span className="ml-auto rounded bg-cyan-500/15 px-2 py-0.5 text-xs text-cyan-400">
-            고정
-          </span>
-        </div>
       </div>
     </div>
   );

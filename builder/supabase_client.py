@@ -81,6 +81,7 @@ def update_session_status(
     supabase_key: str,
     error_message: str | None = None,
     github_run_id: int | None = None,
+    slide_data: list[dict] | None = None,
 ) -> None:
     """Update session status in Supabase database."""
     url = f"{supabase_url}/rest/v1/sessions?id=eq.{session_id}"
@@ -96,6 +97,8 @@ def update_session_status(
         body["error_message"] = error_message
     if github_run_id is not None:
         body["github_run_id"] = github_run_id
+    if slide_data is not None:
+        body["slide_data"] = slide_data
 
     resp = requests.patch(url, json=body, headers=headers, timeout=15)
     resp.raise_for_status()

@@ -67,13 +67,20 @@ def main() -> None:
         presentation = generate_slides(content, slide_count, supabase_url, supabase_key)
         print(f"Generated {len(presentation.slides)} slides")
 
-        # 7. Build PPTX
+        # 7. Save slide data to session for preview
+        slide_data_json = [s.model_dump() for s in presentation.slides]
+        update_session_status(
+            session_id, "generating", supabase_url, supabase_key,
+            slide_data=slide_data_json
+        )
+
+        # 8. Build PPTX
         os.makedirs("output", exist_ok=True)
         output_path = "output/presentation.pptx"
         build_pptx(presentation.slides, output_path)
         print(f"PPTX saved to {output_path}")
 
-        # 8. Update status to complete
+        # 9. Update status to complete
         update_session_status(session_id, "complete", supabase_url, supabase_key)
         print("Build complete!")
 

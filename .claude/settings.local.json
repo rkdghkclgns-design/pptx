@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__Claude_Preview__preview_start",
+      "mcp__90d763d3-1a27-46c9-993c-85e7641f1992__apply_migration",
+      "mcp__90d763d3-1a27-46c9-993c-85e7641f1992__execute_sql",
+      "mcp__90d763d3-1a27-46c9-993c-85e7641f1992__deploy_edge_function",
+      "Bash(gh auth:*)",
+      "Bash(where gh:*)",
+      "Bash(cmd /c \"where gh\")",
+      "WebSearch",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyA4EQKdUngkkudT1D_4wjyIXqOEov185cc\")",
+      "Bash(rm -rf .next)",
+      "Bash(npx next:*)"
+    ]
+  }
+}

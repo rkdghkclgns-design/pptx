@@ -5,25 +5,29 @@ import { Sparkles, Loader2 } from "lucide-react";
 import SourceUploader from "@/components/SourceUploader";
 import NotebookLMButton from "@/components/NotebookLMButton";
 import SettingsPanel from "@/components/SettingsPanel";
+import ThemeSelector from "@/components/ThemeSelector";
 import RenderCanvas from "@/components/RenderCanvas";
 import { supabase } from "@/lib/supabase";
 import { triggerBuild, getSessionStatus } from "@/lib/github";
-import { STORAGE_BUCKET, POLL_INTERVAL_MS, AI_ENGINE } from "@/lib/constants";
-import type { UploadedFile, SessionSettings, SessionStatus, Session } from "@/lib/types";
+import { STORAGE_BUCKET, POLL_INTERVAL_MS } from "@/lib/constants";
+import { DEFAULT_THEME } from "@/lib/themes";
+import type { UploadedFile, SessionSettings, SessionStatus, Session, SlideData } from "@/lib/types";
 
 export default function Home() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [notebookUrl, setNotebookUrl] = useState<string | null>(null);
+  const [themeId, setThemeId] = useState(DEFAULT_THEME.id);
   const [settings, setSettings] = useState<SessionSettings>({
     slideCount: 5,
     duration: 5,
-    aiEngine: AI_ENGINE.value,
+    aiEngine: "gemini-2.5-flash",
   });
 
   const [buildStatus, setBuildStatus] = useState<SessionStatus | "idle">("idle");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [runId, setRunId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [slideData, setSlideData] = useState<SlideData[] | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,6 +53,7 @@ export default function Home() {
         setBuildStatus(session.status);
         if (session.github_run_id) setRunId(session.github_run_id);
         if (session.error_message) setErrorMessage(session.error_message);
+        if (session.slide_data) setSlideData(session.slide_data);
 
         if (session.status === "complete" || session.status === "error") {
           stopPolling();
@@ -64,6 +69,7 @@ export default function Home() {
     if (!hasSources) return;
     setIsSubmitting(true);
     setErrorMessage(null);
+    setSlideData(null);
     setBuildStatus("uploading");
 
     try {
@@ -74,6 +80,7 @@ export default function Home() {
           status: "uploading",
           settings,
           notebook_url: notebookUrl,
+          theme: themeId,
         })
         .select("id")
         .single();
@@ -140,7 +147,7 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
+        <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
           {/* Source Data Section */}
           <div>
             <div className="mb-3 flex items-center justify-between">
@@ -163,6 +170,13 @@ export default function Home() {
           <SettingsPanel
             settings={settings}
             onSettingsChange={setSettings}
+            disabled={isBusy}
+          />
+
+          {/* Theme Section */}
+          <ThemeSelector
+            selected={themeId}
+            onSelect={setThemeId}
             disabled={isBusy}
           />
         </div>
@@ -200,6 +214,8 @@ export default function Home() {
             status={buildStatus}
             errorMessage={errorMessage}
             runId={runId}
+            slideData={slideData}
+            themeId={themeId}
           />
         </div>
       </div>

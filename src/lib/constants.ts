@@ -5,10 +5,6 @@ export const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 export const POLL_INTERVAL_MS = 3000;
 
-export const AI_ENGINE = {
-  value: "gemini-2.5-pro",
-  label: "Google Gemini 2.5 Pro",
-} as const;
 
 export const SESSION_STATUS_STEPS = [
   { key: "uploading", label: "파일 업로드 중..." },

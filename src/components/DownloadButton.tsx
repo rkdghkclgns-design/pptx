@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import { getDownloadUrl } from "@/lib/github";
 
 interface DownloadButtonProps {
   runId: number | null;
@@ -15,10 +14,22 @@ export default function DownloadButton({ runId }: DownloadButtonProps) {
     if (!runId) return;
     setLoading(true);
     try {
-      const url = await getDownloadUrl(runId);
-      if (url) {
-        window.open(url, "_blank");
+      const res = await fetch(`/api/download/${runId}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "다운로드 실패" }));
+        alert(err.error ?? "다운로드에 실패했습니다.");
+        return;
       }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `presentation-${runId}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } finally {
       setLoading(false);
     }
