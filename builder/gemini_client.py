@@ -35,7 +35,7 @@ Slide structure:
 - Last slide: MUST be type "closing" — summarize the key takeaway
 
 Total slides: exactly {slide_count}
-Language: match the source document language (Korean if Korean, English if English)
+Language: ALL slide text (title, subtitle, description, bullets, notes) MUST be written in Korean (한국어). Even if the source is in English, translate and write all content in Korean.
 imagePrompt: ALWAYS in English, describe a professional illustration concept
 
 Return ONLY a valid JSON object: {{"slides": [...]}}"""
