@@ -7,6 +7,21 @@ from typing import Any
 import requests
 
 
+def get_gemini_api_key(supabase_url: str, supabase_key: str) -> str:
+    """Fetch Gemini API key from api_keys table in Supabase."""
+    url = f"{supabase_url}/rest/v1/api_keys?service=eq.google&is_active=eq.true&select=api_key&limit=1"
+    headers = {
+        "Authorization": f"Bearer {supabase_key}",
+        "apikey": supabase_key,
+    }
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    rows = resp.json()
+    if rows:
+        return rows[0]["api_key"]
+    return ""
+
+
 def get_session(
     session_id: str,
     supabase_url: str,

@@ -9,7 +9,7 @@ from gemini_client import generate_slides
 from image_generator import generate_slide_images
 from notebook_fetcher import fetch_notebook_content
 from slide_builder import build_pptx
-from supabase_client import download_source_files, get_session, update_session_status
+from supabase_client import download_source_files, get_gemini_api_key, get_session, update_session_status
 
 
 def main() -> None:
@@ -28,6 +28,13 @@ def main() -> None:
 
     settings = json.loads(settings_json)
     slide_count = settings.get("slideCount", 5)
+
+    # Fetch Gemini API key from Supabase DB (paid key) if not in env
+    if not os.environ.get("GEMINI_API_KEY"):
+        db_key = get_gemini_api_key(supabase_url, supabase_key)
+        if db_key:
+            os.environ["GEMINI_API_KEY"] = db_key
+            print("Using Gemini API key from Supabase DB")
 
     try:
         # 1. Update status to building
