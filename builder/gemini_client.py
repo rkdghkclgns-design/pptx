@@ -52,7 +52,7 @@ def generate_slides(
     if len(content) > max_content_chars:
         content = content[:max_content_chars] + "\n\n[... 이하 생략됨]"
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key={gemini_api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key={gemini_api_key}"
     payload = {
         "contents": [
             {
