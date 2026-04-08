@@ -1,5 +1,6 @@
-"""Generate images for slides using Gemini Imagen API via Supabase image-gen edge function."""
+"""Generate real images for slides using Gemini 2.5 Flash native image generation."""
 
+import base64
 import os
 import time
 from typing import Optional
@@ -14,12 +15,12 @@ def generate_slide_images(
     supabase_url: str,
     supabase_key: str,
 ) -> list[SlideData]:
-    """Generate images for slides that have imagePrompt.
-
-    Uses the existing image-gen edge function on Supabase, or falls back
-    to a placeholder if unavailable.
-    """
+    """Generate images for slides that have imagePrompt."""
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_api_key:
+        print("GEMINI_API_KEY not set, skipping image generation")
+        return list(slides)
+
     updated: list[SlideData] = []
 
     for i, slide in enumerate(slides):
@@ -27,92 +28,63 @@ def generate_slide_images(
             updated.append(slide)
             continue
 
-        print(f"  Generating image for slide {i + 1}: {slide.imagePrompt[:50]}...")
-        image_url = _generate_image(slide.imagePrompt, gemini_api_key)
+        print(f"  Generating image for slide {i + 1}: {slide.imagePrompt[:60]}...")
+        image_data_uri = _generate_image_gemini(slide.imagePrompt, gemini_api_key)
 
-        if image_url:
-            updated.append(slide.model_copy(update={"imageUrl": image_url}))
+        if image_data_uri:
+            # Upload to Supabase Storage for persistent URL
+            public_url = _upload_to_storage(
+                image_data_uri, f"slide-{i}", supabase_url, supabase_key
+            )
+            updated.append(slide.model_copy(update={"imageUrl": public_url or image_data_uri}))
+            print(f"  ✓ Image generated for slide {i + 1}")
         else:
             updated.append(slide)
+            print(f"  ✗ Image generation failed for slide {i + 1}")
 
-        # Rate limit protection
-        time.sleep(1)
+        # Rate limit: 10 RPM for free tier
+        time.sleep(7)
 
     return updated
 
 
-def _generate_image(prompt: str, api_key: str) -> Optional[str]:
-    """Generate image using Gemini Imagen API and return URL.
+def _generate_image_gemini(prompt: str, api_key: str) -> Optional[str]:
+    """Generate image using Gemini 2.5 Flash native image generation.
 
-    Uses the Gemini imagen model to generate an image, then uploads
-    to a free image host or returns a data URI.
+    Returns a data:image/png;base64,... URI or None on failure.
     """
-    if not api_key:
-        return None
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": (
+                            f"Generate a professional, clean illustration image for a presentation slide. "
+                            f"The image should visually represent: {prompt}. "
+                            f"Style: modern flat design, minimal, corporate, 16:9 aspect ratio. "
+                            f"No text in the image."
+                        )
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+        },
+    }
 
     try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key={api_key}"
-        payload = {
-            "instances": [
-                {"prompt": f"Professional presentation slide illustration: {prompt}. Clean, modern, minimal style."}
-            ],
-            "parameters": {
-                "sampleCount": 1,
-                "aspectRatio": "16:9",
-            },
-        }
-
         resp = requests.post(
             url,
             json=payload,
             headers={"Content-Type": "application/json"},
-            timeout=30,
+            timeout=60,
         )
 
-        if resp.status_code == 200:
-            data = resp.json()
-            predictions = data.get("predictions", [])
-            if predictions:
-                image_bytes = predictions[0].get("bytesBase64Encoded", "")
-                if image_bytes:
-                    return f"data:image/png;base64,{image_bytes}"
-
-        # If Imagen fails, try with Gemini Flash image generation
-        return _generate_with_gemini_flash(prompt, api_key)
-
-    except Exception as e:
-        print(f"  Image generation failed: {e}")
-        return None
-
-
-def _generate_with_gemini_flash(prompt: str, api_key: str) -> Optional[str]:
-    """Fallback: Use Gemini Flash to generate a simple SVG-based illustration."""
-    try:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {
-                            "text": f"""Generate a simple, clean SVG illustration for a presentation slide about: {prompt}
-
-Requirements:
-- Return ONLY the SVG code, no explanation
-- Use a 800x450 viewBox (16:9 ratio)
-- Use modern, flat design style
-- Maximum 5-6 shapes
-- Use colors: #06B6D4 (cyan), #3B82F6 (blue), #8B5CF6 (purple)
-- Transparent or dark (#0F172A) background
-- Simple geometric shapes and icons"""
-                        }
-                    ]
-                }
-            ],
-            "generationConfig": {"temperature": 0.5, "maxOutputTokens": 2048},
-        }
-
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"}, timeout=30)
         if resp.status_code != 200:
+            print(f"    Gemini image API error: {resp.status_code} - {resp.text[:150]}")
             return None
 
         data = resp.json()
@@ -120,19 +92,53 @@ Requirements:
         if not candidates:
             return None
 
-        text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-
-        # Extract SVG from response
-        svg_start = text.find("<svg")
-        svg_end = text.find("</svg>")
-        if svg_start >= 0 and svg_end > svg_start:
-            svg = text[svg_start : svg_end + 6]
-            import base64
-            encoded = base64.b64encode(svg.encode("utf-8")).decode("utf-8")
-            return f"data:image/svg+xml;base64,{encoded}"
+        parts = candidates[0].get("content", {}).get("parts", [])
+        for part in parts:
+            inline_data = part.get("inlineData", {})
+            if inline_data.get("mimeType", "").startswith("image/"):
+                b64 = inline_data["data"]
+                mime = inline_data["mimeType"]
+                return f"data:{mime};base64,{b64}"
 
         return None
 
     except Exception as e:
-        print(f"  SVG generation fallback failed: {e}")
+        print(f"    Image generation exception: {e}")
+        return None
+
+
+def _upload_to_storage(
+    data_uri: str,
+    filename: str,
+    supabase_url: str,
+    supabase_key: str,
+) -> Optional[str]:
+    """Upload a data URI image to Supabase Storage and return public URL."""
+    try:
+        # Parse data URI
+        header, b64data = data_uri.split(",", 1)
+        mime = header.split(":")[1].split(";")[0]
+        ext = "png" if "png" in mime else "jpeg"
+        image_bytes = base64.b64decode(b64data)
+
+        path = f"generated/{filename}.{ext}"
+        upload_url = f"{supabase_url}/storage/v1/object/source-files/{path}"
+
+        resp = requests.post(
+            upload_url,
+            data=image_bytes,
+            headers={
+                "Authorization": f"Bearer {supabase_key}",
+                "Content-Type": mime,
+            },
+            timeout=30,
+        )
+
+        if resp.status_code in (200, 201):
+            return f"{supabase_url}/storage/v1/object/public/source-files/{path}"
+
+        return None
+
+    except Exception as e:
+        print(f"    Upload failed: {e}")
         return None
