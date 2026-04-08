@@ -23,12 +23,21 @@ def generate_slide_images(
     updated: list[SlideData] = []
 
     for i, slide in enumerate(slides):
-        if not slide.imagePrompt or slide.type in ("closing",):
+        if not slide.imagePrompt:
             updated.append(slide)
             continue
 
         print(f"  Generating image for slide {i + 1}: {slide.imagePrompt[:60]}...")
-        image_data_uri = _generate_image(slide.imagePrompt, gemini_api_key)
+
+        # Try up to 2 times per slide
+        image_data_uri = None
+        for attempt in range(2):
+            image_data_uri = _generate_image(slide.imagePrompt, gemini_api_key)
+            if image_data_uri:
+                break
+            if attempt == 0:
+                print(f"    Retrying slide {i + 1}...")
+                time.sleep(3)
 
         if image_data_uri:
             updated.append(slide.model_copy(update={"imageUrl": image_data_uri}))

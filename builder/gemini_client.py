@@ -27,7 +27,7 @@ Each slide object must have:
 - "notes": string (speaker notes with additional context from source)
 - "tableHeaders": string[] (optional, for table type)
 - "tableRows": string[][] (optional, for table type)
-- "imagePrompt": string (a detailed English prompt to generate a relevant illustration for this slide, describing the visual concept)
+- "imagePrompt": string (REQUIRED for EVERY slide — a detailed English prompt to generate a relevant illustration, describing the visual concept)
 
 Slide structure:
 - Slide 1: MUST be type "cover" — derive title from the source topic
