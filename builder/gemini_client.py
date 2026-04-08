@@ -46,7 +46,7 @@ def generate_slides(
     slide_count: int,
     supabase_url: str,
     supabase_key: str,
-    max_retries: int = 5,
+    max_retries: int = 3,
     notebook_url: str | None = None,
 ) -> PresentationData:
     """Call Gemini API directly and return structured slide data."""
@@ -65,18 +65,8 @@ def generate_slides(
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
 
-    # Build the prompt text
+    # Build the prompt text — use only the provided content
     prompt_text = f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
-
-    # If we have a notebook URL, instruct Gemini to read it directly
-    if notebook_url and notebook_url.startswith("http"):
-        prompt_text += (
-            f"\n\n--- IMPORTANT: READ THIS URL ---\n"
-            f"You MUST read and analyze the full content at this URL: {notebook_url}\n"
-            f"Base ALL slides on the actual content found at this URL.\n"
-            f"Do NOT make up content. Do NOT describe NotebookLM itself.\n"
-            f"Read the URL first, then create slides from what you find there."
-        )
 
     payload: dict = {
         "contents": [
@@ -91,13 +81,6 @@ def generate_slides(
             "maxOutputTokens": 8192,
         },
     }
-
-    # Use urlContext to let Gemini directly fetch and read the URL content
-    # This works for JS-rendered pages like NotebookLM
-    if notebook_url and notebook_url.startswith("http"):
-        payload["tools"] = [
-            {"urlContext": {}}
-        ]
 
     last_error: Optional[str] = None
     for attempt in range(max_retries):
@@ -117,23 +100,10 @@ def generate_slides(
                 continue
 
             if resp.status_code == 400:
-                # Fallback chain: urlContext → googleSearch → no tools
-                current_tools = payload.get("tools", [])
-                tool_name = current_tools[0] if current_tools else None
-                tool_key = list(tool_name.keys())[0] if isinstance(tool_name, dict) else None
-
-                if tool_key == "urlContext":
-                    print("urlContext failed, falling back to googleSearch...")
-                    payload["tools"] = [{"googleSearch": {}}]
-                    continue
-                elif tool_key == "googleSearch":
-                    print("googleSearch failed, retrying without tools...")
-                    del payload["tools"]
-                    continue
-                else:
-                    last_error = f"HTTP 400: {resp.text[:300]}"
-                    time.sleep(1)
-                    continue
+                last_error = f"HTTP 400: {resp.text[:300]}"
+                print(f"Gemini API 400 error: {resp.text[:200]}")
+                time.sleep(1)
+                continue
 
             resp.raise_for_status()
             data = resp.json()

@@ -158,6 +158,11 @@ export default function Home() {
               <NotebookLMButton
                 url={notebookUrl}
                 onUrlChange={setNotebookUrl}
+                onContentPaste={(content) => {
+                  setTextSource((prev) =>
+                    prev ? `${prev}\n\n=== NotebookLM ===\n${content}` : content
+                  );
+                }}
                 disabled={isBusy}
               />
             </div>
