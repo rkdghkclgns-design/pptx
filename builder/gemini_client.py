@@ -1,7 +1,9 @@
-"""Call Supabase Edge Function (Gemini proxy) for slide content generation."""
+"""Call Gemini API directly for slide content generation."""
 
 import json
+import os
 import time
+from typing import Optional
 
 import requests
 
@@ -39,32 +41,48 @@ def generate_slides(
     supabase_key: str,
     max_retries: int = 3,
 ) -> PresentationData:
-    """Call Gemini via Supabase Edge Function and return structured slide data."""
+    """Call Gemini API directly and return structured slide data."""
+    gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not gemini_api_key:
+        raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
+
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(slide_count=slide_count)
 
-    # Truncate content if too long (Gemini context limit)
     max_content_chars = 30000
     if len(content) > max_content_chars:
         content = content[:max_content_chars] + "\n\n[... 이하 생략됨]"
 
-    url = f"{supabase_url}/functions/v1/gemini-proxy"
-    headers = {
-        "Authorization": f"Bearer {supabase_key}",
-        "Content-Type": "application/json",
-    }
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key={gemini_api_key}"
     payload = {
-        "content": content,
-        "settings": {"slideCount": slide_count},
-        "systemPrompt": system_prompt,
+        "contents": [
+            {
+                "parts": [
+                    {
+                        "text": f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "temperature": 0.7,
+            "maxOutputTokens": 8192,
+            "responseMimeType": "application/json",
+        },
     }
 
-    last_error = None
+    last_error: Optional[str] = None
     for attempt in range(max_retries):
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=60)
+            resp = requests.post(
+                url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=120,
+            )
 
             if resp.status_code == 429 or resp.status_code >= 500:
-                wait = (3 ** attempt)
+                wait = 3 ** attempt
+                print(f"Gemini API retry {attempt + 1}/{max_retries} (HTTP {resp.status_code}), waiting {wait}s...")
                 time.sleep(wait)
                 last_error = f"HTTP {resp.status_code}: {resp.text[:200]}"
                 continue
@@ -72,7 +90,6 @@ def generate_slides(
             resp.raise_for_status()
             data = resp.json()
 
-            # Extract the slides JSON from the Gemini response
             slides_json = _extract_slides_json(data)
             return PresentationData.model_validate(slides_json)
 
@@ -86,17 +103,14 @@ def generate_slides(
 
 def _extract_slides_json(gemini_response: dict) -> dict:
     """Extract slides JSON from Gemini API response."""
-    # Try direct response (when responseMimeType is application/json)
     if "slides" in gemini_response:
         return gemini_response
 
-    # Try Gemini REST API response format
     candidates = gemini_response.get("candidates", [])
     if candidates:
         parts = candidates[0].get("content", {}).get("parts", [])
         if parts:
             text = parts[0].get("text", "")
-            # Clean up markdown code blocks if present
             text = text.strip()
             if text.startswith("```json"):
                 text = text[7:]
@@ -106,4 +120,6 @@ def _extract_slides_json(gemini_response: dict) -> dict:
                 text = text[:-3]
             return json.loads(text.strip())
 
-    raise ValueError(f"Gemini 응답에서 슬라이드 데이터를 추출할 수 없습니다: {json.dumps(gemini_response)[:500]}")
+    raise ValueError(
+        f"Gemini 응답에서 슬라이드 데이터를 추출할 수 없습니다: {json.dumps(gemini_response)[:500]}"
+    )
