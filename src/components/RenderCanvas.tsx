@@ -37,17 +37,19 @@ export default function RenderCanvas({
 
   if (status === "complete") {
     return (
-      <div className="flex h-full flex-col overflow-y-auto">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-zinc-200">
-            &#x2705; 생성 완료! ({slideData?.length ?? 0}장)
+      <div className="flex h-full flex-col">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-zinc-300">
+            &#x2705; {slideData?.length ?? 0}장 생성 완료
           </h2>
-          <div className="w-48">
+          <div className="w-44">
             <DownloadButton runId={runId} />
           </div>
         </div>
         {slideData && slideData.length > 0 ? (
-          <SlidePreview slides={slideData} themeId={themeId} />
+          <div className="flex-1 overflow-hidden rounded-xl border border-zinc-800">
+            <SlidePreview slides={slideData} themeId={themeId} />
+          </div>
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-zinc-500">
             미리보기를 사용할 수 없습니다. PPTX를 다운로드하세요.

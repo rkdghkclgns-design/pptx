@@ -6,6 +6,7 @@ import sys
 
 from file_parser import parse_all_files
 from gemini_client import generate_slides
+from image_generator import generate_slide_images
 from notebook_fetcher import fetch_notebook_content
 from slide_builder import build_pptx
 from supabase_client import download_source_files, get_session, update_session_status
@@ -67,17 +68,24 @@ def main() -> None:
         presentation = generate_slides(content, slide_count, supabase_url, supabase_key)
         print(f"Generated {len(presentation.slides)} slides")
 
-        # 7. Save slide data to session for preview
-        slide_data_json = [s.model_dump() for s in presentation.slides]
+        # 7. Generate images for slides
+        print("Generating slide images...")
+        slides_with_images = generate_slide_images(
+            presentation.slides, supabase_url, supabase_key
+        )
+        print(f"Images generated for {sum(1 for s in slides_with_images if s.imageUrl)} slides")
+
+        # 8. Save slide data to session for preview
+        slide_data_json = [s.model_dump() for s in slides_with_images]
         update_session_status(
             session_id, "generating", supabase_url, supabase_key,
             slide_data=slide_data_json
         )
 
-        # 8. Build PPTX
+        # 9. Build PPTX
         os.makedirs("output", exist_ok=True)
         output_path = "output/presentation.pptx"
-        build_pptx(presentation.slides, output_path)
+        build_pptx(slides_with_images, output_path)
         print(f"PPTX saved to {output_path}")
 
         # 9. Update status to complete

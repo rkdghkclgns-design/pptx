@@ -10,26 +10,33 @@ import requests
 from schemas.slide_schema import PresentationData
 
 SYSTEM_PROMPT_TEMPLATE = """You are a professional presentation content generator.
-Given the source document content below, produce a JSON object with a "slides" array.
+Your task: Analyze the source document thoroughly and create a presentation that accurately represents its content.
+
+CRITICAL RULES:
+1. Every slide MUST be based on actual information from the source document
+2. Do NOT invent facts, statistics, or claims not present in the source
+3. Organize the source content logically into a compelling narrative flow
+4. Extract key points, data, and insights directly from the source
 
 Each slide object must have:
 - "type": one of "cover", "content", "twoColumn", "threeCards", "table", "quote", "section", "closing"
 - "title": string (slide title)
 - "subtitle": string (optional, for cover/section slides)
-- "description": string (optional, body text or paragraph)
-- "bullets": string[] (optional, bullet points, max 6 items, max 15 words each)
-- "notes": string (optional, speaker notes)
+- "description": string (optional, body text paragraph from source)
+- "bullets": string[] (optional, key points from source, max 6 items, max 20 words each)
+- "notes": string (speaker notes with additional context from source)
 - "tableHeaders": string[] (optional, for table type)
 - "tableRows": string[][] (optional, for table type)
+- "imagePrompt": string (a detailed English prompt to generate a relevant illustration for this slide, describing the visual concept)
 
-Rules:
-- First slide MUST be type "cover" with title and subtitle
-- Last slide MUST be type "closing"
-- Total number of slides: exactly {slide_count}
-- Language: match the source document language (Korean if Korean, English if English)
-- Be concise: max 6 bullets per slide, max 15 words per bullet
-- Use varied slide types for visual interest (don't repeat the same type)
-- Include speaker notes that expand on each slide's content
+Slide structure:
+- Slide 1: MUST be type "cover" — derive title from the source topic
+- Slides 2 to {last_slide}: Mix of content, twoColumn, quote, section types — each covering a distinct aspect from the source
+- Last slide: MUST be type "closing" — summarize the key takeaway
+
+Total slides: exactly {slide_count}
+Language: match the source document language (Korean if Korean, English if English)
+imagePrompt: ALWAYS in English, describe a professional illustration concept
 
 Return ONLY a valid JSON object: {{"slides": [...]}}"""
 
@@ -46,7 +53,10 @@ def generate_slides(
     if not gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
 
-    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(slide_count=slide_count)
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
+        slide_count=slide_count,
+        last_slide=slide_count - 1,
+    )
 
     max_content_chars = 30000
     if len(content) > max_content_chars:

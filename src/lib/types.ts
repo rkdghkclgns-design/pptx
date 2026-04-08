@@ -17,6 +17,8 @@ export interface SlideData {
   notes?: string;
   tableHeaders?: string[];
   tableRows?: string[][];
+  imageUrl?: string;
+  imagePrompt?: string;
 }
 
 export interface SessionSettings {

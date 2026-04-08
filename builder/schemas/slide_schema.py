@@ -20,6 +20,8 @@ class SlideData(BaseModel):
     notes: Optional[str] = None
     tableHeaders: Optional[list[str]] = None
     tableRows: Optional[list[list[str]]] = None
+    imagePrompt: Optional[str] = None
+    imageUrl: Optional[str] = None
 
 
 class PresentationData(BaseModel):
