@@ -97,8 +97,12 @@ export default function Home() {
 
       // 2. Upload files to Supabase Storage
       const filePaths: string[] = [];
-      for (const f of files) {
-        const path = `${sid}/${f.name}`;
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const ext = f.name.split(".").pop() ?? "bin";
+        // Use safe ASCII filename to avoid encoding issues with Korean filenames
+        const safeName = `file_${i}.${ext}`;
+        const path = `${sid}/${safeName}`;
         const { error: uploadError } = await supabase.storage
           .from(STORAGE_BUCKET)
           .upload(path, f.file);
