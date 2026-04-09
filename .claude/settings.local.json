@@ -11,7 +11,19 @@
       "WebSearch",
       "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyA4EQKdUngkkudT1D_4wjyIXqOEov185cc\")",
       "Bash(rm -rf .next)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(curl -s -X POST \"https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw\" -H \"Content-Type: application/json\" -d '{\"\"\"\"instances\"\"\"\":[{\"\"\"\"prompt\"\"\"\":\"\"\"\"A simple blue circle on white background\"\"\"\"}],\"\"\"\"parameters\"\"\"\":{\"\"\"\"sampleCount\"\"\"\":1}}')",
+      "Bash(curl -s -X POST \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw\" -H \"Content-Type: application/json\" -d '{\"\"\"\"contents\"\"\"\":[{\"\"\"\"parts\"\"\"\":[{\"\"\"\"text\"\"\"\":\"\"\"\"Generate an image of a simple blue circle\"\"\"\"}]}],\"\"\"\"generationConfig\"\"\"\":{\"\"\"\"responseModalities\"\"\"\":[\"\"\"\"TEXT\"\"\"\",\"\"\"\"IMAGE\"\"\"\"]}}')",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw\")",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw&pageSize=100\")",
+      "Bash(curl -s \"https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw&pageSize=100\" 2)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST \"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=AIzaSyB_64V8Mk-LwmI4xUDZrxFCfXrGY6b0wqw\" -H \"Content-Type: application/json\" -d '{\"\"\"\"contents\"\"\"\":[{\"\"\"\"parts\"\"\"\":[{\"\"\"\"text\"\"\"\":\"\"\"\"Generate an image: A simple blue circle on white background, minimal flat design\"\"\"\"}]}],\"\"\"\"generationConfig\"\"\"\":{\"\"\"\"responseModalities\"\"\"\":[\"\"\"\"IMAGE\"\"\"\"]}}')",
+      "Bash(mkdir -p ~/.claude/skills)",
+      "Bash(cp -r \"C:/Users/kani9/Desktop/유치훈 깃허브/Skywork-Skills/skywork-ppt\" ~/.claude/skills/)",
+      "Bash(cp -r \"C:/Users/kani9/Desktop/유치훈 깃허브/Skywork-Skills/skywork-design\" ~/.claude/skills/)",
+      "Bash(cp -r \"C:/Users/kani9/Desktop/유치훈 깃허브/Skywork-Skills/skywork-search\" ~/.claude/skills/)",
+      "Bash(cp -r \"C:/Users/kani9/Desktop/유치훈 깃허브/Skywork-Skills/skywork-doc\" ~/.claude/skills/)"
     ]
   }
 }

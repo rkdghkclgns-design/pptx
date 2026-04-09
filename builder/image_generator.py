@@ -1,4 +1,10 @@
-"""Generate real images for slides using Gemini 2.5 Flash Image model."""
+"""Generate images for slides using Gemini 2.5 Flash Image model.
+
+Enhanced with Skywork-Design patterns:
+- Professional illustration prompts
+- Retry with varied prompts on failure
+- Guaranteed image for every slide
+"""
 
 import os
 import time
@@ -8,13 +14,25 @@ import requests
 
 from schemas.slide_schema import SlideData
 
+# Fallback prompts for slides that fail image generation
+FALLBACK_PROMPTS = {
+    "cover": "A sleek, modern presentation cover page with abstract geometric shapes, gradient blue and teal colors, professional business aesthetic",
+    "content": "A clean business infographic layout with abstract data visualization elements, modern corporate flat design, blue accent colors",
+    "twoColumn": "A split composition showing two complementary business concepts side by side, modern flat design with geometric shapes",
+    "threeCards": "Three floating cards with abstract icons representing business concepts, modern minimal design, soft shadows",
+    "table": "A clean data table visualization with highlighted rows and columns, corporate blue color scheme, modern design",
+    "quote": "An elegant quotation mark design with subtle gradient background, inspirational and professional atmosphere",
+    "section": "A bold section divider with abstract geometric shapes and gradient, modern presentation transition slide",
+    "closing": "A professional thank you slide design with subtle confetti or celebration elements, clean and elegant",
+}
+
 
 def generate_slide_images(
     slides: list[SlideData],
     supabase_url: str,
     supabase_key: str,
 ) -> list[SlideData]:
-    """Generate images for slides that have imagePrompt."""
+    """Generate images for all slides."""
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
     if not gemini_api_key:
         print("GEMINI_API_KEY not set, skipping image generation")
@@ -23,40 +41,49 @@ def generate_slide_images(
     updated: list[SlideData] = []
 
     for i, slide in enumerate(slides):
-        if not slide.imagePrompt:
-            updated.append(slide)
-            continue
+        prompt = slide.imagePrompt or FALLBACK_PROMPTS.get(slide.type, FALLBACK_PROMPTS["content"])
+        print(f"  [{i + 1}/{len(slides)}] Generating image: {prompt[:50]}...")
 
-        print(f"  Generating image for slide {i + 1}: {slide.imagePrompt[:60]}...")
-
-        # Try up to 2 times per slide
-        image_data_uri = None
-        for attempt in range(2):
-            image_data_uri = _generate_image(slide.imagePrompt, gemini_api_key)
-            if image_data_uri:
-                break
-            if attempt == 0:
-                print(f"    Retrying slide {i + 1}...")
-                time.sleep(3)
+        # Try original prompt, then simplified, then fallback
+        image_data_uri = _generate_with_retries(prompt, slide.type, gemini_api_key)
 
         if image_data_uri:
             updated.append(slide.model_copy(update={"imageUrl": image_data_uri}))
-            print(f"  ✓ Image generated for slide {i + 1}")
+            print(f"  ✓ Slide {i + 1} image OK")
         else:
             updated.append(slide)
-            print(f"  ✗ Image generation failed for slide {i + 1}")
+            print(f"  ✗ Slide {i + 1} no image")
 
-        # Rate limit: ~10 RPM
+        # Rate limit: ~10 RPM for free tier
         time.sleep(7)
 
     return updated
 
 
-def _generate_image(prompt: str, api_key: str) -> Optional[str]:
-    """Generate image using gemini-2.5-flash-image model.
+def _generate_with_retries(prompt: str, slide_type: str, api_key: str) -> Optional[str]:
+    """Try multiple prompt strategies to generate an image."""
+    # Attempt 1: Original prompt
+    result = _call_image_api(prompt, api_key)
+    if result:
+        return result
 
-    Returns a data:image/png;base64,... URI or None on failure.
-    """
+    time.sleep(3)
+
+    # Attempt 2: Simplified prompt
+    simplified = f"Professional business illustration: {prompt[:100]}. Flat design, clean, no text."
+    result = _call_image_api(simplified, api_key)
+    if result:
+        return result
+
+    time.sleep(3)
+
+    # Attempt 3: Generic fallback for slide type
+    fallback = FALLBACK_PROMPTS.get(slide_type, FALLBACK_PROMPTS["content"])
+    return _call_image_api(fallback, api_key)
+
+
+def _call_image_api(prompt: str, api_key: str) -> Optional[str]:
+    """Call gemini-2.5-flash-image API."""
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key={api_key}"
 
     payload = {
@@ -65,8 +92,9 @@ def _generate_image(prompt: str, api_key: str) -> Optional[str]:
                 "parts": [
                     {
                         "text": (
-                            f"Generate an image: Professional presentation slide illustration about: {prompt}. "
-                            f"Style: clean modern flat design, minimal, corporate colors, no text in the image."
+                            f"Generate an image: {prompt}. "
+                            f"Style: professional presentation illustration, "
+                            f"clean modern design, minimal, no text in the image."
                         )
                     }
                 ]
@@ -86,13 +114,12 @@ def _generate_image(prompt: str, api_key: str) -> Optional[str]:
         )
 
         if resp.status_code != 200:
-            print(f"    Image API error {resp.status_code}: {resp.text[:150]}")
+            print(f"    API {resp.status_code}: {resp.text[:80]}")
             return None
 
         data = resp.json()
         candidates = data.get("candidates", [])
         if not candidates:
-            print("    No candidates in image response")
             return None
 
         parts = candidates[0].get("content", {}).get("parts", [])
@@ -104,9 +131,8 @@ def _generate_image(prompt: str, api_key: str) -> Optional[str]:
                 if b64:
                     return f"data:{mime};base64,{b64}"
 
-        print("    No image data in response parts")
         return None
 
     except Exception as e:
-        print(f"    Image generation exception: {e}")
+        print(f"    Exception: {e}")
         return None

@@ -1,4 +1,10 @@
-"""Call Gemini API directly for slide content generation."""
+"""Call Gemini API for slide content generation.
+
+Enhanced with Skywork-PPT workflow patterns:
+- Multi-layer content structuring
+- Source-faithful content extraction
+- Professional presentation narrative flow
+"""
 
 import json
 import os
@@ -9,36 +15,48 @@ import requests
 
 from schemas.slide_schema import PresentationData
 
-SYSTEM_PROMPT_TEMPLATE = """You are a professional presentation content generator.
-Your task: Analyze the source document thoroughly and create a presentation that accurately represents its content.
+SYSTEM_PROMPT_TEMPLATE = """당신은 전문 프레젠테이션 콘텐츠 생성기입니다.
 
-CRITICAL RULES:
-1. Every slide MUST be based on actual information from the source document
-2. Do NOT invent facts, statistics, or claims not present in the source
-3. Organize the source content logically into a compelling narrative flow
-4. Extract key points, data, and insights directly from the source
+## 임무
+제공된 소스 문서를 철저히 분석하여 소스 내용을 정확히 반영하는 프레젠테이션을 생성합니다.
 
-Each slide object must have:
-- "type": one of "cover", "content", "twoColumn", "threeCards", "table", "quote", "section", "closing"
-- "title": string (slide title)
-- "subtitle": string (optional, for cover/section slides)
-- "description": string (optional, body text paragraph from source)
-- "bullets": string[] (optional, key points from source, max 6 items, max 20 words each)
-- "notes": string (speaker notes with additional context from source)
-- "tableHeaders": string[] (optional, for table type)
-- "tableRows": string[][] (optional, for table type)
-- "imagePrompt": string (REQUIRED for EVERY slide — a detailed English prompt to generate a relevant illustration, describing the visual concept)
+## 핵심 원칙
+1. 모든 슬라이드는 소스 문서의 실제 정보에 기반해야 합니다
+2. 소스에 없는 사실, 통계, 주장을 만들어내지 마세요
+3. 소스 콘텐츠를 논리적이고 설득력 있는 내러티브 흐름으로 구성하세요
+4. 각 슬라이드는 소스의 서로 다른 핵심 주제를 다뤄야 합니다
 
-Slide structure:
-- Slide 1: MUST be type "cover" — derive title from the source topic
-- Slides 2 to {last_slide}: Mix of content, twoColumn, quote, section types — each covering a distinct aspect from the source
-- Last slide: MUST be type "closing" — summarize the key takeaway
+## 슬라이드 JSON 스키마
+각 슬라이드 객체:
+- "type": "cover" | "content" | "twoColumn" | "threeCards" | "table" | "quote" | "section" | "closing"
+- "title": string (한국어, 슬라이드 제목)
+- "subtitle": string (선택, 한국어, cover/section/closing용)
+- "description": string (선택, 한국어, 본문 단락)
+- "bullets": string[] (선택, 한국어, 핵심 포인트, 최대 6개, 각 20단어 이내)
+- "notes": string (한국어, 발표자 노트 — 슬라이드 내용을 보충하는 상세 설명)
+- "tableHeaders": string[] (선택, table 타입용)
+- "tableRows": string[][] (선택, table 타입용)
+- "imagePrompt": string (필수! 모든 슬라이드에 포함. 영어로 작성. 해당 슬라이드 주제를 시각적으로 표현하는 일러스트레이션 프롬프트)
 
-Total slides: exactly {slide_count}
-Language: ALL slide text (title, subtitle, description, bullets, notes) MUST be written in Korean (한국어). Even if the source is in English, translate and write all content in Korean.
-imagePrompt: ALWAYS in English, describe a professional illustration concept
+## 슬라이드 구성 규칙
+- 슬라이드 1: 반드시 "cover" — 소스 주제에서 제목과 부제 도출
+- 슬라이드 2~{last_slide}: content, twoColumn, threeCards, table, quote, section을 다양하게 혼합
+  - 각 슬라이드는 소스의 서로 다른 핵심 측면을 다룸
+  - 연속으로 같은 type 사용 금지
+  - table 타입은 비교/데이터가 있을 때 사용
+  - quote 타입은 핵심 인사이트 강조용
+  - section 타입은 주제 전환 구분용
+- 마지막 슬라이드: 반드시 "closing" — 핵심 메시지 요약
 
-Return ONLY a valid JSON object: {{"slides": [...]}}"""
+## 제약사항
+- 총 슬라이드 수: 정확히 {slide_count}장
+- 언어: 모든 텍스트는 반드시 한국어(Korean)로 작성
+- imagePrompt: 반드시 영어(English)로, 전문적인 일러스트레이션 컨셉 설명
+- bullets는 간결하게 (각 항목 20단어 이내)
+- description은 2~3문장으로 핵심만
+
+## 출력 형식
+반드시 유효한 JSON만 반환: {{"slides": [...]}}"""
 
 
 def generate_slides(
@@ -49,7 +67,7 @@ def generate_slides(
     max_retries: int = 3,
     notebook_url: str | None = None,
 ) -> PresentationData:
-    """Call Gemini API directly and return structured slide data."""
+    """Call Gemini API and return structured slide data."""
     gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
     if not gemini_api_key:
         raise RuntimeError("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.")
@@ -65,8 +83,7 @@ def generate_slides(
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
 
-    # Build the prompt text — use only the provided content
-    prompt_text = f"{system_prompt}\n\n--- SOURCE CONTENT ---\n\n{content}"
+    prompt_text = f"{system_prompt}\n\n--- 소스 콘텐츠 ---\n\n{content}"
 
     payload: dict = {
         "contents": [
