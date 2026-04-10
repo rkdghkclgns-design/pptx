@@ -95,7 +95,10 @@ def generate_slides(
         ],
         "generationConfig": {
             "temperature": 0.7,
-            "maxOutputTokens": 8192,
+            "maxOutputTokens": 32768,
+            "thinkingConfig": {
+                "thinkingBudget": 0,
+            },
         },
     }
 
@@ -143,6 +146,7 @@ def _extract_slides_json(gemini_response: dict) -> dict:
 
     candidates = gemini_response.get("candidates", [])
     if candidates:
+        finish_reason = candidates[0].get("finishReason", "")
         parts = candidates[0].get("content", {}).get("parts", [])
         for part in parts:
             text = part.get("text", "")
@@ -157,11 +161,76 @@ def _extract_slides_json(gemini_response: dict) -> dict:
                 text = text[:-3]
             text = text.strip()
             if text.startswith("{"):
+                # Try direct parse
                 try:
                     return json.loads(text)
                 except json.JSONDecodeError:
-                    continue
+                    pass
+
+                # Try repairing truncated JSON
+                repaired = _repair_truncated_json(text)
+                if repaired:
+                    try:
+                        return json.loads(repaired)
+                    except json.JSONDecodeError:
+                        pass
+
+        print(f"JSON 파싱 실패. finishReason: {finish_reason}")
 
     raise ValueError(
         f"Gemini 응답에서 슬라이드 데이터를 추출할 수 없습니다: {json.dumps(gemini_response)[:500]}"
     )
+
+
+def _repair_truncated_json(text: str) -> Optional[str]:
+    """Attempt to repair truncated JSON by closing open brackets/braces.
+
+    Strategy: find the last complete slide object in the slides array,
+    truncate after it, and close the array and root object.
+    """
+    # Find "slides" array start
+    slides_idx = text.find('"slides"')
+    if slides_idx < 0:
+        return None
+
+    array_start = text.find("[", slides_idx)
+    if array_start < 0:
+        return None
+
+    # Walk through characters tracking depth to find complete objects
+    depth = 0
+    in_string = False
+    escape = False
+    last_complete_end = -1
+
+    for i in range(array_start + 1, len(text)):
+        ch = text[i]
+
+        if escape:
+            escape = False
+            continue
+
+        if ch == "\\":
+            escape = True
+            continue
+
+        if ch == '"':
+            in_string = not in_string
+            continue
+
+        if in_string:
+            continue
+
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                last_complete_end = i
+
+    if last_complete_end < 0:
+        return None
+
+    # Rebuild: text up to last complete object + close array + close root
+    repaired = text[: last_complete_end + 1] + "]}"
+    return repaired
